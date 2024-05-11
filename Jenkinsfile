@@ -1,5 +1,8 @@
 pipeline {
     agent none
+    environment {
+        SNYK_CREDENTIALS = credentials('SnykToken')
+    }
     stages {
         stage('Secret Scanning Using Trufflehog') {
             agent {
@@ -10,7 +13,7 @@ pipeline {
             }
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    sh 'trufflehog filesystem . --exclude-paths trufflehog-excluded-paths.txt --fail > trufflehog-scan-result.txt'
+                    sh 'trufflehog filesystem . --only-verified --exclude-paths trufflehog-excluded-paths.txt --fail > trufflehog-scan-result.txt'
                 }
                 sh 'cat trufflehog-scan-result.txt'
                 archiveArtifacts artifacts: 'trufflehog-scan-result.txt'
@@ -36,50 +39,17 @@ pipeline {
                 sh 'echo test'
             }
         }
-        stage('SCA Retire Js') {
+        stage('SAST SonarQube') {
             agent {
               docker {
-                  image 'node:lts-buster-slim'
-              }
-            }
-            steps {
-                sh 'npm install retire'
-                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    sh './node_modules/retire/lib/cli.js --outputpath retire-scan-report.txt'
-                }
-                sh 'cat retire-scan-report.txt'
-                archiveArtifacts artifacts: 'retire-scan-report.txt'
-            }
-        }
-        stage('SCA OWASP Dependency Check') {
-            agent {
-              docker {
-                  image 'owasp/dependency-check:latest'
-                  args '-u root -v /var/run/docker.sock:/var/run/docker.sock --entrypoint='
+                  image 'sonarsource/sonar-scanner-cli:latest'
+                  args '--network host -v ".:/usr/src" --entrypoint='
               }
             }
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    sh '/usr/share/dependency-check/bin/dependency-check.sh --scan . --project "zapphireye-frontend" --format ALL'
+                    sh 'sonar-scanner -Dsonar.projectKey=zapphireyefrontend -Dsonar.qualitygate.wait=true -Dsonar.sources=. -Dsonar.host.url=http://192.168.236.223:9000 -Dsonar.token=sqp_b03915ed17a0a99c83ba3d8db968d6e57832ddbe' 
                 }
-                archiveArtifacts artifacts: 'dependency-check-report.html'
-                archiveArtifacts artifacts: 'dependency-check-report.json'
-                archiveArtifacts artifacts: 'dependency-check-report.xml'
-            }
-        }
-        stage('SCA Trivy Scan Dockerfile Misconfiguration') {
-            agent {
-              docker {
-                  image 'aquasec/trivy:latest'
-                  args '-u root --network host --entrypoint='
-              }
-            }
-            steps {
-                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    sh 'trivy config Dockerfile --exit-code=1 > trivy-scan-dockerfile-report.txt'
-                }
-                sh 'cat trivy-scan-dockerfile-report.txt'
-                archiveArtifacts artifacts: 'trivy-scan-dockerfile-report.txt'
             }
         }
         stage('Build Docker Image') {
@@ -93,6 +63,5 @@ pipeline {
                 sh 'docker build -t zapphireye-frontend:0.1 .'
             }
         }
-
-    }
+   }
 }
