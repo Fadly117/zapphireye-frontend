@@ -48,7 +48,7 @@ pipeline {
             }
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    sh 'sonar-scanner -Dsonar.projectKey=zapphireyefrontend -Dsonar.qualitygate.wait=true -Dsonar.sources=. -Dsonar.host.url=http://192.168.146.223:9000 -Dsonar.token=sqp_7cf0495a6e3db080e2e5cbddadfb2918921ab178' 
+                    sh 'sonar-scanner -Dsonar.projectKey=zapphireyefrontend -Dsonar.qualitygate.wait=true -Dsonar.sources=. -Dsonar.host.url=http://192.168.1.18:9000 -Dsonar.token=sqp_7cf0495a6e3db080e2e5cbddadfb2918921ab178' 
                 }
             }
         }
@@ -60,8 +60,26 @@ pipeline {
                 }
             }
             steps {
-                sh 'docker build -t zapphireye-frontend:0.1 .'
+                sh 'echo Lamongan117 | docker login -u fadly31 --password-stdin'
+                sh 'docker build -t fadly31/zapphireyefrontend .'
+                sh 'docker push fadly31/zapphireyefrontend'
             }
         }
+         stage('Deploy Docker Image') {
+            agent {
+                docker {
+                    image 'kroniak/ssh-client'
+                    args '--user root --network host'
+                }
+            }
+            steps {
+                withCredentials([sshUserPrivateKey(credentialsId: "DeploymentSSHKey", keyFileVariable: 'keyfile')]) {
+                    sh 'ssh -i ${keyfile} -o StrictHostKeyChecking=no fadly@192.168.1.18 "echo Lamongan117 | docker login -u fadly31 --password-stdin"'
+                    sh 'ssh -i ${keyfile} -o StrictHostKeyChecking=no fadly@192.168.1.18 docker pull fadly31/nodegoat'
+                    sh 'ssh -i ${keyfile} -o StrictHostKeyChecking=no fadly@192.168.1.18 docker rm --force nodegoat'
+                    sh 'ssh -i ${keyfile} -o StrictHostKeyChecking=no fadly@192.168.1.18 docker run -it --detach -p 4321:4321 --name zapphireyefrontend --network host fadly31/nodegoat'
+                }
+            } 
+         }
    }
 }
